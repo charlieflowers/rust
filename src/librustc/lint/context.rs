@@ -109,12 +109,20 @@ impl LintStore {
                                               *v.ref1())).collect()
     }
 
+    // crf: in the case I'm considering, we call this with a session, a context (self), and GatherNodeLevels cast as LintPassObject
     pub fn register_pass(&mut self, sess: Option<&Session>,
                          from_plugin: bool, pass: LintPassObject) {
+
+        // crf: We ask the pass for all its lints, and we iterate (so in my case, we ask GatherNodeLevels for its lints)
         for &lint in pass.get_lints().iter() {
+            // crf: But what lints does GatherNodeLevels return? It returns an EMPTY ARRAY. So skip this whole loop!
+
+            // We push each lint onto our self.lints.
             self.lints.push((lint, from_plugin));
 
+            // We call LintId::of(lint)
             let id = LintId::of(lint);
+            // We insert the lint into our by_name dictionary. If it is already there, that's an error.
             if !self.by_name.insert(lint.name_lower(), id) {
                 let msg = format!("duplicate specification of lint {}", lint.name_lower());
                 match (sess, from_plugin) {
@@ -132,15 +140,29 @@ impl LintStore {
                 self.levels.insert(id, (lint.default_level, Default));
             }
         }
+
+        // crf: So, now we get a mutable ref to our list of passes, and we add the GatherNodeLevels pass to it.
+        //  get_mut_ref is deprecated, but it is part of Option. It merely unwraps the option, gets a mut ref to it, and
+        // returns it, or blows up if it is None.
         self.passes.get_mut_ref().push(pass);
     }
 
+    // crf: this particular fn is used to register the unused_imports lint, among others. In that case, from_plugin is false,
+    //  and name is "unused" (the name of the group)
     pub fn register_group(&mut self, sess: Option<&Session>,
                           from_plugin: bool, name: &'static str,
                           to: Vec<LintId>) {
+        // crf: lint_groups is a hash_map of string: (lint_id, bool)
+        // So in this case, the key is "unused", and the value is the vector of lints (plus false, since this was not added by plugin)
         let new = self.lint_groups.insert(name, (to, from_plugin));
 
+        // crf: suprising that hashmap doesn't return Option. What does it return?
+        // it is in the Collections trait, and its Collections:insert. It returns true if the value needed to be added because it
+        //  was NOT already in the collection. False if the value WAS already there.
+
+        // crf: so, if this group was already in the collection,
         if !new {
+            // then report an error
             let msg = format!("duplicate specification of lint group {}", name);
             match (sess, from_plugin) {
                 // We load builtin lints first, so a duplicate is a compiler bug.
@@ -155,6 +177,9 @@ impl LintStore {
     }
 
     pub fn register_builtin(&mut self, sess: Option<&Session>) {
+        // crf: sweet! local, private macros used only in this fn!
+        // this fn has hardwired list of lints to register.
+
         macro_rules! add_builtin ( ( $sess:ident, $($name:ident),*, ) => (
             {$(
                 self.register_pass($sess, false, box builtin::$name as LintPassObject);
@@ -201,13 +226,37 @@ impl LintStore {
         add_lint_group!(sess, "bad_style",
                         NON_CAMEL_CASE_TYPES, NON_SNAKE_CASE, NON_UPPERCASE_STATICS)
 
+        // crf: unused_imports is registered using "register_group", in the group "unused"
         add_lint_group!(sess, "unused",
                         UNUSED_IMPORTS, UNUSED_VARIABLE, DEAD_ASSIGNMENT, DEAD_CODE,
                         UNUSED_MUT, UNREACHABLE_CODE, UNUSED_EXTERN_CRATE, UNUSED_MUST_USE,
                         UNUSED_UNSAFE, UNUSED_RESULT, PATH_STATEMENT)
 
+        // crf: We THEN register a PASS. We are allocating an instance of GatherNodeLevels on the heap and casting it to
+            // LintPassObject.
+
+            // crf: What is GatherNodeLevels? An empty struct that implements some traits. Among
+            // possiblye other things, it implements LintPass.
+            //
+            // What's LintPassObject? It is defined as follows:
+            // pub type LintPassObject = Box<LintPass + 'static>;
+            //
+            // Remember, "type" is used to declare a synonym for another type.
+            // So LintPassObject is a synonym for the owning pointer of a ListPass that has static lifetime.
+            // Now, LintPass is a trait. So this is a pointer to a "trait object" of type LintPass, and polymorphism will be
+            //  used to call methods on it if necessary.
+            //
+            // So, we call register_pass with the following:
+            // 1. the session
+            // 2. on ourself.
+            // 3. with a pointer to a trait object, and the actual impl is GatherNodeLevels
+
         // We have one lint pass defined in this module.
         self.register_pass(sess, false, box GatherNodeLevels as LintPassObject);
+
+        // crf: what does register_pass do?
+        //
+        // Adds the GatherNodeLevels pass to the list of passes in the context.
     }
 
     pub fn process_command_line(&mut self, sess: &Session) {
@@ -707,6 +756,28 @@ struct GatherNodeLevels;
 
 impl LintPass for GatherNodeLevels {
     fn get_lints(&self) -> LintArray {
+        // crf: When this lintPass is registered, something asks this lintPass for its lints. And it returns lint_array!.
+        //  WTF is that?
+        // It's defined in librustc/lint/mod.rs, as:
+        // static array: LintArray = &[ $( $lint ),* ];
+        // So in this case, it is a static thing of type LintArray instantiated as a borrowed pointer to an EMPTY array.
+        // Several questions:
+        // 1. WTF is this static stuff?
+        //   This is a "static item" as defined in 6.1.7 of ref manual. It is a CONSTANT value stored in the global data section
+        //   of a crate. Statics have the static lifetime, which outlives all other lifetimes in Rust program.
+        //   BUT WAIT! It called it a "constant" but that's misleading. It can be mutable if you say so, but that requires an
+        //   unsafe block. I guess it means it must be INITIALIZED with a constant. Anyway, this one is not mutable.
+        // 2. What is type LintArray?
+        // pub type LintArray = &'static [&'static Lint];
+        //
+        // A borrowed pointer to an array of borrowed pointers to Lints.
+        // 3. How is a LintPass with no "lints" (an empty array) actually doing anything???
+        //  Right now, that's the million dollar question.
+        // Remember, it is NOT mutable, so nothing can add to it. Can something take ownership later and make it mutable? I doubt it.
+
+        // crf: one hint: The trait impls all the fns with empty fns. And this "override" goes out of its way to specify the
+        //  check_item fn below. So I'm guessing that the GatherNodeLevels LintPass cares only about check_item, and that's key
+        //  to how it does its work. But let's continue linear reading.
         lint_array!()
     }
 

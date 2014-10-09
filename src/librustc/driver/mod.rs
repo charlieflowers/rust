@@ -34,6 +34,7 @@ pub mod session;
 pub mod config;
 pub mod pretty;
 
+// crf: This is where the very entry point from command line calls to. This is compilation just getting started.
 pub fn run(args: Vec<String>) -> int {
     monitor(proc() run_compiler(args.as_slice()));
     0
@@ -42,13 +43,24 @@ pub fn run(args: Vec<String>) -> int {
 static BUG_REPORT_URL: &'static str =
     "http://doc.rust-lang.org/complement-bugreport.html";
 
+
+// crf: very early in compilation process.
 fn run_compiler(args: &[String]) {
+    // crf: as you suspect, handle_options interprets compiler options. Returns None if they are flawed or compilation should stop.
     let matches = match handle_options(Vec::from_slice(args)) {
         Some(matches) => matches,
         None => return
     };
 
+    // crf: ignoring this for now.
     let descriptions = diagnostics::registry::Registry::new(super::DIAGNOSTICS);
+
+
+    // crf: lets dig into this. getopts is an extern crate defined at libgetopts/lib.rs. And handle_options returns a
+    //  get_opts::matches. That type will have opt_str on it.
+    // Yes. So if there is an "explain" option in the command line args, return the value of that arg. If any of those
+    // diagnostic descripotions i skipped over above match the value (it calls "find_description" so some logic might apply),
+    // then print the description.
     match matches.opt_str("explain") {
         Some(ref code) => {
             match descriptions.find_description(code.as_slice()) {
@@ -64,12 +76,25 @@ fn run_compiler(args: &[String]) {
         None => ()
     }
 
+    // crf: lets dig into what session is, starting with understanding these session opts. No big deal really. All the options about
+    //  what kind of output to make, whether to include debugging info, etc.
     let sopts = config::build_session_options(&matches);
+    // crf: what is matches.free? you can just type free strings on the command line that are not associated with an arg.
     let (input, input_file_path) = match matches.free.len() {
         0u => {
+            // crf: if you did NOT type any free strings on command line, but "help" was included for at least 1 of the lint levels,
+            //  then we instantiate a "LintStore". this is in lint::context.rs. Starts out with merely empty initialized data members.
             if sopts.describe_lints {
                 let mut ls = lint::LintStore::new();
+                // crf: next line doesn't do what you might think. It actually has a HARDWIRED LIST of builtin lints, and it
+                //  registers them all.
+                //
+                // crf: in the case of unused_imports, it has done 2 things:
+                // 1. Added a LintPass called GatherNodeLevels to LintStore.passes
+                // 2. Added a lint_group called "unused" to LintStore.lint_groups
                 ls.register_builtin(None);
+
+                // crf: So what does describe_lints do?
                 describe_lints(&ls, false);
                 return;
             }

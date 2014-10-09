@@ -639,6 +639,7 @@ pub fn parse_cfgspecs(cfgspecs: Vec<String> ) -> ast::CrateConfig {
     }).collect::<ast::CrateConfig>()
 }
 
+// crf: the compiler seems to create a "session" for every single call to the compiler. And these options configure that session.
 pub fn build_session_options(matches: &getopts::Matches) -> Options {
 
     let unparsed_crate_types = matches.opt_strs("crate-type");
@@ -652,11 +653,17 @@ pub fn build_session_options(matches: &getopts::Matches) -> Options {
     let mut lint_opts = vec!();
     let mut describe_lints = false;
 
+    // crf: for each lint level,
     for &level in [lint::Allow, lint::Warn, lint::Deny, lint::Forbid].iter() {
+        // crf: turn the level into a string with as_str, and then find all the matches in command line options for the level
+        // as_str is simple as you could imagine (sad rust doesn't do that for us). opt_strs is used when an option supports
+        // multiple values. We get all the values for Allow, all the values for Warn, etc.
+        // Looks like if we ever specified "help" for a lint, it will later describe al the lints to us with a nice text desc.
         for lint_name in matches.opt_strs(level.as_str()).into_iter() {
             if lint_name.as_slice() == "help" {
                 describe_lints = true;
             } else {
+                // crf: if the value of the command line option is anything other than "help", we push it onto lint_opts.
                 lint_opts.push((lint_name.replace("-", "_").into_string(), level));
             }
         }

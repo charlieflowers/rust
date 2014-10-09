@@ -148,8 +148,9 @@ mod rustc {
     pub use lint;
 }
 
+// crf: I believe this right here is the entry point to the compiler. We're in a lib.rs, but we have a main.
 pub fn main() {
     let args = std::os::args();
-    let result = driver::run(args);
+    let result = driver::run(args); // This called to librustc/driver.mod.rs, to the "run" fn
     std::os::set_exit_status(result);
 }
