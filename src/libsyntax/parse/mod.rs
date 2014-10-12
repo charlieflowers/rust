@@ -96,11 +96,16 @@ pub fn parse_crate_attrs_from_file(
     inner
 }
 
+// crf: Coolness, here we are!
 pub fn parse_crate_from_source_str(name: String,
                                    source: String,
                                    cfg: ast::CrateConfig,
                                    sess: &ParseSess)
                                    -> ast::Crate {
+    // crf: We call new_parser_from_source_str, and the last param is the string to compile. I forget what name is.
+                // Fascinating, there are 2 definitions for this! One is nested inside "with_hygeine", which is marked as
+                //  temporary, waiting on a bug fix.
+                // I'll assume the non-nested one is the better source for understanding the intent
     let mut p = new_parser_from_source_str(sess,
                                            cfg,
                                            name,
@@ -184,11 +189,19 @@ pub fn parse_tts_from_source_str(name: String,
 // Note: keep in sync with `with_hygiene::new_parser_from_source_str`
 // until #16472 is resolved.
 // Create a new parser from a source string
+//
+// crf: Following the call path to here.
 pub fn new_parser_from_source_str<'a>(sess: &'a ParseSess,
                                       cfg: ast::CrateConfig,
                                       name: String,
                                       source: String)
                                       -> Parser<'a> {
+    // crf: We turn the string to a filemap, and then call filemap to parser.
+    // what does string_to_filemap do?
+    // skipping all that for now!
+    // next we turn a filemap to a parser.
+
+
     filemap_to_parser(sess, string_to_filemap(sess, source, name), cfg)
 }
 
@@ -218,6 +231,8 @@ pub fn new_sub_parser_from_file<'a>(sess: &'a ParseSess,
 // Note: keep this in sync with `with_hygiene::filemap_to_parser` until
 // #16472 is resolved.
 /// Given a filemap and config, return a parser
+//
+// crf: skipping some more stuff, going to tts_to_parser
 pub fn filemap_to_parser<'a>(sess: &'a ParseSess,
                              filemap: Rc<FileMap>,
                              cfg: ast::CrateConfig) -> Parser<'a> {
@@ -268,6 +283,9 @@ pub fn file_to_filemap(sess: &ParseSess, path: &Path, spanopt: Option<Span>)
 
 /// Given a session and a string, add the string to
 /// the session's codemap and return the new filemap
+//
+// crf: Well, we create a new filemap. This is going to be a long tedious chain of calls where the intent is pretty clear. I'm
+//   skipping it for now,.
 pub fn string_to_filemap(sess: &ParseSess, source: String, path: String)
                          -> Rc<FileMap> {
     sess.span_diagnostic.cm.new_filemap(path, source)
@@ -290,7 +308,14 @@ pub fn filemap_to_tts(sess: &ParseSess, filemap: Rc<FileMap>)
 pub fn tts_to_parser<'a>(sess: &'a ParseSess,
                          tts: Vec<ast::TokenTree>,
                          cfg: ast::CrateConfig) -> Parser<'a> {
+
+// crf: Finally! To the interesting stuff!
+// we make a new "tt_reader" whatever that is, and pass it to the parser.
+// it's in libsyntax/ext/tt/transcribe.rs
+    // It's pretty much a reader / lexer, capable of parsing macros. Surprised to see macros dealt with so early.
     let trdr = lexer::new_tt_reader(&sess.span_diagnostic, None, tts);
+    // crf: we then instantiate and return a Parser.
+    // But which parser is this? Probably parse::parser::Parser since that s used above.
     Parser::new(sess, cfg, box trdr)
 }
 

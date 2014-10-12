@@ -46,6 +46,9 @@ pub struct TtReader<'a> {
 /// This can do Macro-By-Example transcription. On the other hand, if
 /// `src` contains no `TTSeq`s and `TTNonterminal`s, `interp` can (and
 /// should) be none.
+//
+// crf: Following call path here. Sets up a tt_reader, which is a reader capable of lexing MACROS. I'm surpriased to see that
+//  this early in the compilation process.
 pub fn new_tt_reader<'a>(sp_diag: &'a SpanHandler,
                          interp: Option<HashMap<Ident, Rc<NamedMatch>>>,
                          src: Vec<ast::TokenTree> )

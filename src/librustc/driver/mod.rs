@@ -95,25 +95,35 @@ fn run_compiler(args: &[String]) {
                 ls.register_builtin(None);
 
                 // crf: So what does describe_lints do?
+                // Produces a detailed description of all the lints and dumps it out.
                 describe_lints(&ls, false);
+
+                // crf: KEEP IN MIND: If they did not ask for "help" on the cmd line, then the lints would not even be loaded yet,
+                //  (for example, register_builtin would not have even been called)
                 return;
             }
             early_error("no input filename given");
         }
         1u => {
             let ifile = matches.free.get(0).as_slice();
+            // crf: this is cool, lets the compiler read its input from stdin.
             if ifile == "-" {
                 let contents = io::stdin().read_to_end().unwrap();
                 let src = String::from_utf8(contents).unwrap();
+                // crf: this sets input to the string from stdin, and filepath to none
                 (StrInput(src), None)
             } else {
+                // crf: this sets input to a FileInput of the source file, and filepath to the source of the file.
                 (FileInput(Path::new(ifile)), Some(Path::new(ifile)))
             }
         }
         _ => early_error("multiple input filenames provided")
     };
 
-    let sess = build_session(sopts, input_file_path, descriptions);
+    // crf: now it's time to build_session. What happens here?
+    // It's driver::session::build_session
+    // It just builds a big struct called session, but it also sets up the LintStore and calls register_builtin
+
     let cfg = config::build_configuration(&sess);
     let odir = matches.opt_str("out-dir").map(|o| Path::new(o));
     let ofile = matches.opt_str("o").map(|o| Path::new(o));
@@ -132,6 +142,8 @@ fn run_compiler(args: &[String]) {
     let r = matches.opt_strs("Z");
     if r.contains(&("ls".to_string())) {
         match input {
+            // crf: if you passed in a Z option and it contains "ls", then we are going to list metadata.
+            //  We might be an rlib or something, so there could be interesting info i guess
             FileInput(ref ifile) => {
                 let mut stdout = io::stdout();
                 list_metadata(&sess, &(*ifile), &mut stdout).unwrap();
@@ -147,6 +159,7 @@ fn run_compiler(args: &[String]) {
         return;
     }
 
+    // crf: And now! We call driver::compile_input.
     driver::compile_input(sess, cfg, &input, &odir, &ofile, None);
 }
 

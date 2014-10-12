@@ -196,6 +196,7 @@ impl Session {
     }
 }
 
+// crf: so usually, local_crate_source_file is the file to be compiled and registry is whatever those diagnostic descriptions were.
 pub fn build_session(sopts: config::Options,
                      local_crate_source_file: Option<Path>,
                      registry: diagnostics::registry::Registry)
@@ -229,6 +230,9 @@ pub fn build_session_(sopts: config::Options,
         }
     );
 
+    // crf: Mostly, session is just a big struct telling us what we're supposed to do on this run. But it is interesting that
+                          // it uses a RefCell to hold LintStore.
+
     let sess = Session {
         targ_cfg: target_cfg,
         opts: sopts,
@@ -249,6 +253,7 @@ pub fn build_session_(sopts: config::Options,
         recursion_limit: Cell::new(64),
     };
 
+    // crf: We call the good ol register_builtin right here.
     sess.lint_store.borrow_mut().register_builtin(Some(&sess));
     sess
 }

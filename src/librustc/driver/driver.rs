@@ -55,6 +55,8 @@ pub fn host_triple() -> &'static str {
         expect("CFG_COMPILER_HOST_TRIPLE")
 }
 
+// crf: So driver's mod.rs calls this pretty early, shortly after we made the session and registered the builtin lints to an
+//  empty lint store.
 pub fn compile_input(sess: Session,
                      cfg: ast::CrateConfig,
                      input: &Input,
@@ -64,8 +66,16 @@ pub fn compile_input(sess: Session,
     // We need nested scopes here, because the intermediate results can keep
     // large chunks of memory alive and we want to free them as soon as
     // possible to keep the peak memory usage low
+
+    // crf: This is really cool, you know it, but need to remeober it since former langs couldn't do it. You can use scopes to
+    //  precisely and easily control when certain memory (EVEN ON THE STACK) gets cleaned up.
+
+    // crf: Also cool how an inner block, since it is an expression, is almost like an in-place function. Like Jon Blow talks about,
+    //   you could migrate to this form shortly before turning it into a full blown fn.
     let (outputs, trans, sess) = {
         let (outputs, expanded_crate, id) = {
+            // crf: Aha! Here we are ALREADY! Calling phase 1 of compilation!
+            // So what is phase 1, in a nutshell?
             let krate = phase_1_parse_input(&sess, cfg, input);
             if stop_after_phase_1(&sess) { return; }
             let outputs = build_output_filenames(input,
@@ -75,6 +85,8 @@ pub fn compile_input(sess: Session,
                                                  &sess);
             let id = link::find_crate_name(Some(&sess), krate.attrs.as_slice(),
                                            input);
+
+            // crf: here's the call to phase 2
             let expanded_crate
                 = match phase_2_configure_and_expand(&sess, krate, id.as_slice(),
                                                      addl_plugins) {
@@ -141,14 +153,19 @@ impl Input {
 }
 
 
+// crf: let's dig into phase_1_parse_input! It returns an ast::Crate. (I'm expecting to find the lexer here)
 pub fn phase_1_parse_input(sess: &Session, cfg: ast::CrateConfig, input: &Input)
     -> ast::Crate {
+        // crf: input is either the StringInput or FileInput. It's what we need to compile.
     let krate = time(sess.time_passes(), "parsing", (), |_| {
+        // crf: we're timing the parsing step.
         match *input {
             FileInput(ref file) => {
+                // crf: lets hold off on this one since string should be quicker to the good stuff.
                 parse::parse_crate_from_file(&(*file), cfg.clone(), &sess.parse_sess)
             }
             StrInput(ref src) => {
+                // crf: let's read this path first. It's in libsyntax::parse::mod.rs
                 parse::parse_crate_from_source_str(anon_src().to_string(),
                                                    src.to_string(),
                                                    cfg.clone(),
